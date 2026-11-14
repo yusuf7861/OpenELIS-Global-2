@@ -13,6 +13,8 @@ import java.io.IOException;
 import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import org.apache.commons.validator.GenericValidator;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
@@ -22,6 +24,11 @@ import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.util.EntityUtils;
 import org.hl7.fhir.r4.model.Bundle;
+import org.hl7.fhir.r4.model.CodeableConcept;
+import org.hl7.fhir.r4.model.Coding;
+import org.hl7.fhir.r4.model.Reference;
+import org.hl7.fhir.r4.model.ResourceType;
+import org.hl7.fhir.r4.model.ServiceRequest;
 import org.itech.fhir.dataexport.core.service.FhirClientFetcher;
 import org.openelisglobal.common.log.LogEvent;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -80,20 +87,25 @@ public class FhirUtil implements FhirClientFetcher {
 
     public String getAccessToken(String authUrl, String authUserName, String authPassowrd) throws IOException {
         HttpPost httpPost = new HttpPost(authUrl);
-
-        String json = String.format("{\"username\":\"%s\",\"password\":\"%s\"}", authUserName, authPassowrd);
-        StringEntity entity = new StringEntity(json);
-        httpPost.setEntity(entity);
+        ObjectMapper mapper = new ObjectMapper();
+        Map<String, String> credentials = new LinkedHashMap<>();
+        credentials.put("username", authUserName);
+        credentials.put("password", authPassowrd);
+        httpPost.setEntity(new StringEntity(mapper.writeValueAsString(credentials), StandardCharsets.UTF_8));
         httpPost.setHeader("Accept", "application/json");
         httpPost.setHeader("Content-type", "application/json");
-        ObjectMapper mapper = new ObjectMapper();
-        JsonNode response = mapper.createObjectNode();
         try (CloseableHttpResponse res = closeableHttpClient.execute(httpPost)) {
-            if (res.getStatusLine().getStatusCode() == 200) {
-                response = mapper.readTree(EntityUtils.toString(res.getEntity(), StandardCharsets.UTF_8));
+            int status = res.getStatusLine().getStatusCode();
+            String body = res.getEntity() == null ? "" : EntityUtils.toString(res.getEntity(), StandardCharsets.UTF_8);
+            if (status != 200) {
+                throw new IOException("Token request to " + authUrl + " answered HTTP " + status);
             }
+            JsonNode token = mapper.readTree(body).get("access_token");
+            if (token == null || token.asText().isEmpty()) {
+                throw new IOException("Token response from " + authUrl + " has no access_token");
+            }
+            return token.asText();
         }
-        return response.get("access_token").asText();
     }
 
     private String extractFhirPath(HttpServletRequest request) {
@@ -162,6 +174,38 @@ public class FhirUtil implements FhirClientFetcher {
             LogEvent.logError(this.getClass().getSimpleName(), method, "Unexpected error: " + e.getMessage());
             throw new RuntimeException("Unexpected error communicating with FHIR store", e);
         }
+    }
+
+    /**
+     * Extracts the sample domain code (H, E, V) from a ServiceRequest's category
+     * codings using the {@code {oeFhirSystem}/samp_domain} system.
+     *
+     * @return the domain code, or {@code null} if no domain category is present
+     */
+    public String getSampleDomain(ServiceRequest serviceRequest) {
+        if (serviceRequest == null) {
+            return null;
+        }
+        String domainSystem = fhirConfig.getOeFhirSystem() + "/samp_domain";
+        for (CodeableConcept category : serviceRequest.getCategory()) {
+            for (Coding coding : category.getCoding()) {
+                if (domainSystem.equals(coding.getSystem())) {
+                    return coding.getCode();
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * True when the reference points at a Patient by id. The subject of an
+     * environmental or vector ServiceRequest is a Location or a contained Group,
+     * which must not be read as a Patient.
+     */
+    public static boolean refersToPatient(Reference reference) {
+        return reference != null
+                && ResourceType.Patient.name().equals(reference.getReferenceElement().getResourceType())
+                && !GenericValidator.isBlankOrNull(reference.getReferenceElement().getIdPart());
     }
 
     private void addAuthHeader(org.apache.http.HttpRequest httpRequest) {

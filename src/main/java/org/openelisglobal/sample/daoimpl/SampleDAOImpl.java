@@ -23,7 +23,6 @@ import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.List;
 import java.util.Locale;
-import java.util.stream.Collectors;
 import org.apache.commons.beanutils.PropertyUtils;
 import org.apache.commons.validator.GenericValidator;
 import org.hibernate.HibernateException;
@@ -35,6 +34,7 @@ import org.openelisglobal.common.log.LogEvent;
 import org.openelisglobal.common.util.ConfigurationProperties;
 import org.openelisglobal.common.util.ConfigurationProperties.Property;
 import org.openelisglobal.common.util.DateUtil;
+import org.openelisglobal.referral.valueholder.ReferralStatus;
 import org.openelisglobal.sample.dao.SampleDAO;
 import org.openelisglobal.sample.valueholder.OrderPriority;
 import org.openelisglobal.sample.valueholder.Sample;
@@ -64,9 +64,9 @@ public class SampleDAOImpl extends BaseDAOImpl<Sample, String> implements Sample
             if (samp != null) {
 
                 // set sample projects
-                String sql = "from SampleProject sp where samp_id = :sampleId";
+                String sql = "from SampleProject sp where sp.sample.id = :sampleId";
                 Query<SampleProject> query = entityManager.unwrap(Session.class).createQuery(sql, SampleProject.class);
-                query.setParameter("sampleId", Integer.parseInt(samp.getId()));
+                query.setParameter("sampleId", samp.getId());
                 List<SampleProject> list = query.list();
 
                 samp.setSampleProjects(list);
@@ -120,6 +120,21 @@ public class SampleDAOImpl extends BaseDAOImpl<Sample, String> implements Sample
 
     @Override
     @Transactional(readOnly = true)
+    public List<Sample> getSamplesNewestFirst(int startingRecNo, int pageSize) throws LIMSRuntimeException {
+        try {
+            Query<Sample> query = entityManager.unwrap(Session.class).createQuery("from Sample s order by s.id desc",
+                    Sample.class);
+            query.setFirstResult(Math.max(startingRecNo, 1) - 1);
+            query.setMaxResults(Math.max(pageSize, 1));
+            return query.list();
+        } catch (RuntimeException e) {
+            LogEvent.logError(e);
+            throw new LIMSRuntimeException("Error in Sample getSamplesNewestFirst()", e);
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public void getSampleByAccessionNumber(Sample sample) throws LIMSRuntimeException {
         try {
             String sql = "from Sample s where s.accessionNumber = :param";
@@ -133,9 +148,9 @@ public class SampleDAOImpl extends BaseDAOImpl<Sample, String> implements Sample
 
             if (samp != null) {
                 // set sample projects
-                sql = "from SampleProject sp where samp_id = :param";
+                sql = "from SampleProject sp where sp.sample.id = :param";
                 Query<SampleProject> query2 = entityManager.unwrap(Session.class).createQuery(sql, SampleProject.class);
-                query2.setParameter("param", Integer.parseInt(samp.getId()));
+                query2.setParameter("param", samp.getId());
                 List<SampleProject> sp = query2.list();
                 samp.setSampleProjects(sp);
 
@@ -265,6 +280,38 @@ public class SampleDAOImpl extends BaseDAOImpl<Sample, String> implements Sample
         }
         return sample;
     }
+
+    /**
+     * Get unassigned Sample by accession number - only returns sample if it has an
+     * unassigned referral (not assigned to a shipping box, not lost, not canceled)
+     *
+     * @param accessionNumber The accession number of the Sample being sought.
+     * @return Sample The Sample if it has an unassigned referral, or null
+     *         otherwise.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public Sample getUnassignedSampleByAccessionNumber(String accessionNumber) throws LIMSRuntimeException {
+        try {
+            String sql = "SELECT DISTINCT s FROM Referral r " + "JOIN r.analysis a " + "JOIN a.sampleItem si "
+                    + "JOIN si.sample s " + "WHERE s.accessionNumber = :accessionNumber "
+                    + "AND r.status NOT IN (:cancelledStatuses) "
+                    + "AND (r.lostStatus IS NULL OR r.lostStatus = false) " + "AND r.assignedBox IS NULL";
+
+            Query<Sample> query = entityManager.unwrap(Session.class).createQuery(sql, Sample.class);
+            query.setParameter("accessionNumber", accessionNumber);
+            query.setParameterList("cancelledStatuses", List.of(ReferralStatus.CANCELLED, ReferralStatus.CANCELED));
+
+            List<Sample> list = query.list();
+            if ((list != null) && !list.isEmpty()) {
+                return list.get(0);
+            }
+            return null;
+        } catch (RuntimeException e) {
+            LogEvent.logError(e);
+            throw new LIMSRuntimeException("Exception occurred in getUnassignedSampleByAccessionNumber", e);
+        }
+    }
     // ==============================================================
 
     @Override
@@ -272,7 +319,7 @@ public class SampleDAOImpl extends BaseDAOImpl<Sample, String> implements Sample
     public List<Sample> getSamplesByStatusAndDomain(List<String> statuses, String domain) throws LIMSRuntimeException {
         List<Sample> list;
         try {
-            String sql = "from Sample s where status in (:param1) and domain = :param2";
+            String sql = "from Sample s where s.status in (:param1) and s.domain = :param2";
             Query<Sample> query = entityManager.unwrap(Session.class).createQuery(sql, Sample.class);
             query.setParameterList("param1", statuses);
             query.setParameter("param2", domain);
@@ -441,8 +488,8 @@ public class SampleDAOImpl extends BaseDAOImpl<Sample, String> implements Sample
 
     @Override
     @Transactional(readOnly = true)
-    public List<Sample> getSamplesByProjectAndStatusIDAndAccessionRange(List<Integer> inclusiveProjectIdList,
-            List<Integer> inclusiveStatusIdList, String minAccession, String maxAccession) throws LIMSRuntimeException {
+    public List<Sample> getSamplesByProjectAndStatusIDAndAccessionRange(List<String> inclusiveProjectIdList,
+            List<String> inclusiveStatusIdList, String minAccession, String maxAccession) throws LIMSRuntimeException {
 
         String sql = "from Sample s where s.statusId in (:statusList) and s.accessionNumber >= :minAccess and"
                 + " s.accessionNumber <= :maxAccess and s.id in (select sp.sample.id from SampleProject"
@@ -467,7 +514,7 @@ public class SampleDAOImpl extends BaseDAOImpl<Sample, String> implements Sample
     @Override
     @Transactional(readOnly = true)
     public List<Sample> getSamplesByProjectAndStatusIDAndAccessionRange(String projectId,
-            List<Integer> inclusiveStatusIdList, String minAccession, String maxAccession) throws LIMSRuntimeException {
+            List<String> inclusiveStatusIdList, String minAccession, String maxAccession) throws LIMSRuntimeException {
 
         String sql = "from Sample s where s.statusId in (:statusList) and s.accessionNumber >= :minAccess and"
                 + " s.accessionNumber <= :maxAccess and s.id in (select sp.sample.id from SampleProject"
@@ -475,7 +522,7 @@ public class SampleDAOImpl extends BaseDAOImpl<Sample, String> implements Sample
         try {
             Query<Sample> query = entityManager.unwrap(Session.class).createQuery(sql, Sample.class);
             query.setParameterList("statusList", inclusiveStatusIdList);
-            query.setParameter("projectId", Integer.parseInt(projectId));
+            query.setParameter("projectId", projectId);
             query.setParameter("minAccess", minAccession);
             query.setParameter("maxAccess", maxAccession);
 
@@ -549,6 +596,22 @@ public class SampleDAOImpl extends BaseDAOImpl<Sample, String> implements Sample
 
     @Override
     @Transactional(readOnly = true)
+    public List<Sample> getEnvironmentalSamplesWithAccessionNumberStartingWith(String prefix, int max) {
+        try {
+            String escaped = prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
+            return entityManager.createQuery(
+                    "from Sample s where s.domain = 'E' and upper(s.accessionNumber) like upper(:prefix) escape '\\'"
+                            + " order by s.accessionNumber",
+                    Sample.class).setParameter("prefix", escaped + "%").setMaxResults(max).getResultList();
+        } catch (RuntimeException e) {
+            LogEvent.logError(e);
+            throw new LIMSRuntimeException("Error in Sample getEnvironmentalSamplesWithAccessionNumberStartingWith()",
+                    e);
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public String getLargestAccessionNumberMatchingPattern(String startingWith, int accessionSize)
             throws LIMSRuntimeException {
         String greatestAccessionNumber = null;
@@ -575,7 +638,7 @@ public class SampleDAOImpl extends BaseDAOImpl<Sample, String> implements Sample
 
         try {
             Query<Sample> query = entityManager.unwrap(Session.class).createQuery(sql, Sample.class);
-            query.setParameter("serviceId", Integer.parseInt(serviceId));
+            query.setParameter("serviceId", serviceId);
             List<Sample> samples = query.list();
             return samples;
         } catch (HibernateException e) {
@@ -657,8 +720,7 @@ public class SampleDAOImpl extends BaseDAOImpl<Sample, String> implements Sample
                 + " a.sampleItem.id FROM Analysis a WHERE a.id IN (:analysisIds)))";
         try {
             Query<Sample> query = entityManager.unwrap(Session.class).createQuery(hql, Sample.class);
-            query.setParameter("analysisIds",
-                    analysisIds.stream().map(e -> Integer.parseInt(e)).collect(Collectors.toList()));
+            query.setParameter("analysisIds", analysisIds);
             return query.list();
         } catch (HibernateException e) {
             handleException(e, "getSamplesBySampleItem");
@@ -675,9 +737,9 @@ public class SampleDAOImpl extends BaseDAOImpl<Sample, String> implements Sample
                 + " 'organization' ))";
         try {
             Query<Sample> query = entityManager.unwrap(Session.class).createQuery(hql, Sample.class);
-            query.setParameter("requesterId", Integer.parseInt(referringSiteId));
-            query.setParameter("lowerDate", lowerDate.atStartOfDay());
-            query.setParameter("upperDate", upperDate.atTime(LocalTime.MAX));
+            query.setParameter("requesterId", Long.parseLong(referringSiteId));
+            query.setParameter("lowerDate", java.sql.Timestamp.valueOf(lowerDate.atStartOfDay()));
+            query.setParameter("upperDate", java.sql.Timestamp.valueOf(upperDate.atTime(LocalTime.MAX)));
             return query.list();
         } catch (HibernateException e) {
             handleException(e, "getSamplesForSiteBetweenOrderDates");
@@ -692,9 +754,9 @@ public class SampleDAOImpl extends BaseDAOImpl<Sample, String> implements Sample
                 + " so.sample.id FROM SampleOrganization so WHERE so.organization.id = :requesterId )";
         try {
             Query<Sample> query = entityManager.unwrap(Session.class).createQuery(hql, Sample.class);
-            query.setParameter("requesterId", Integer.parseInt(referringSiteId));
-            query.setParameter("lowerDate", lowerDate.atStartOfDay());
-            query.setParameter("upperDate", upperDate.atTime(LocalTime.MAX));
+            query.setParameter("requesterId", referringSiteId);
+            query.setParameter("lowerDate", java.sql.Timestamp.valueOf(lowerDate.atStartOfDay()));
+            query.setParameter("upperDate", java.sql.Timestamp.valueOf(upperDate.atTime(LocalTime.MAX)));
             return query.list();
         } catch (HibernateException e) {
             handleException(e, "getSamplesForSiteBetweenOrderDates");
@@ -708,7 +770,7 @@ public class SampleDAOImpl extends BaseDAOImpl<Sample, String> implements Sample
         String sql = "from Sample s where s.priority = :oderpriority";
         try {
             Query<Sample> query = entityManager.unwrap(Session.class).createQuery(sql, Sample.class);
-            query.setParameter("oderpriority", priority.name());
+            query.setParameter("oderpriority", priority);
             List<Sample> sampleList = query.list();
             return sampleList;
         } catch (HibernateException e) {
@@ -716,5 +778,37 @@ public class SampleDAOImpl extends BaseDAOImpl<Sample, String> implements Sample
         }
 
         return null;
+    }
+
+    @Override
+    public List<Sample> findSamplesWithRequiredByBefore(java.sql.Timestamp horizon) {
+        String sql = "from Sample s where s.requiredBy is not null and s.requiredBy <= :horizon";
+        try {
+            Query<Sample> query = entityManager.unwrap(Session.class).createQuery(sql, Sample.class);
+            query.setParameter("horizon", horizon);
+            return query.list();
+        } catch (HibernateException e) {
+            handleException(e, "findSamplesWithRequiredByBefore");
+        }
+        return new java.util.ArrayList<>();
+    }
+
+    @Override
+    public List<Sample> getStatSamplesReceivedBetweenWithAnalysisIn(java.sql.Timestamp since, java.sql.Timestamp cutoff,
+            List<String> analysisStatusIds) {
+        String sql = "from Sample s where s.priority = :stat and s.receivedTimestamp > :since and"
+                + " s.receivedTimestamp <= :cutoff and exists (from Analysis a where a.sampleItem.sample.id = s.id"
+                + " and a.statusId in (:statusIds))";
+        try {
+            Query<Sample> query = entityManager.unwrap(Session.class).createQuery(sql, Sample.class);
+            query.setParameter("stat", OrderPriority.STAT);
+            query.setParameter("since", since);
+            query.setParameter("cutoff", cutoff);
+            query.setParameterList("statusIds", analysisStatusIds);
+            return query.list();
+        } catch (HibernateException e) {
+            handleException(e, "getStatSamplesReceivedBetweenWithAnalysisIn");
+        }
+        return new java.util.ArrayList<>();
     }
 }

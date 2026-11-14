@@ -20,6 +20,7 @@ import org.openelisglobal.common.valueholder.BaseObject;
 import org.openelisglobal.common.valueholder.ValueHolder;
 import org.openelisglobal.common.valueholder.ValueHolderInterface;
 import org.openelisglobal.organization.valueholder.Organization;
+import org.openelisglobal.shipment.valueholder.ShippingBox;
 
 public class Referral extends BaseObject<String> {
 
@@ -36,8 +37,26 @@ public class Referral extends BaseObject<String> {
     private ReferralStatus status;
     private UUID fhirUuid;
 
+    // Shipment tracking fields
+    private ValueHolderInterface assignedBox = new ValueHolder();
+    private Boolean lostStatus = false;
+    private Timestamp lostDate;
+    private String lostReason;
+    private String priority;
+    private Timestamp cancelDate;
+    private String cancelReason;
+    private Boolean manuallyEntered = false;
+
+    // OGC-803/804 reception actions
+    private Boolean reconciled = false;
+    private Timestamp reconciledAt;
+    private String reconciledBy;
+    private String rejectReasonCode;
+    private String rejectReasonText;
+
     private ValueHolderInterface analysis = new ValueHolder();
     private ValueHolderInterface organization = new ValueHolder();
+    private ValueHolderInterface subcontract = new ValueHolder();
 
     @Override
     public String getId() {
@@ -113,8 +132,16 @@ public class Referral extends BaseObject<String> {
         this.organization.setValue(organization);
     }
 
+    public ReferralSubcontract getSubcontract() {
+        return (ReferralSubcontract) subcontract.getValue();
+    }
+
+    public void setSubcontract(ReferralSubcontract subcontract) {
+        this.subcontract.setValue(subcontract);
+    }
+
     public boolean isCanceled() {
-        return ReferralStatus.CANCELED.equals(status);
+        return ReferralStatus.CANCELLED.equals(status);
     }
 
     public void setRequestDate(Timestamp requestDate) {
@@ -151,5 +178,136 @@ public class Referral extends BaseObject<String> {
 
     public void setFhirUuid(UUID fhirUuid) {
         this.fhirUuid = fhirUuid;
+    }
+
+    // Shipment tracking getters/setters
+
+    public ShippingBox getAssignedBox() {
+        return (ShippingBox) assignedBox.getValue();
+    }
+
+    public void setAssignedBox(ShippingBox assignedBox) {
+        this.assignedBox.setValue(assignedBox);
+    }
+
+    public String getAssignedToBoxId() {
+        ShippingBox box = getAssignedBox();
+        return box != null ? box.getId().toString() : null;
+    }
+
+    public void setAssignedToBoxId(String assignedToBoxId) {
+        // This method is kept for backward compatibility with service layer
+        // The actual relationship is managed through setAssignedBox()
+        if (assignedToBoxId != null) {
+            ShippingBox box = new ShippingBox();
+            box.setId(Integer.valueOf(assignedToBoxId));
+            setAssignedBox(box);
+        } else {
+            setAssignedBox(null);
+        }
+    }
+
+    public Boolean getLostStatus() {
+        return lostStatus;
+    }
+
+    public void setLostStatus(Boolean lostStatus) {
+        this.lostStatus = lostStatus;
+    }
+
+    public Timestamp getLostDate() {
+        return lostDate;
+    }
+
+    public void setLostDate(Timestamp lostDate) {
+        this.lostDate = lostDate;
+    }
+
+    public String getLostReason() {
+        return lostReason;
+    }
+
+    public void setLostReason(String lostReason) {
+        this.lostReason = lostReason;
+    }
+
+    public String getPriority() {
+        return priority;
+    }
+
+    public void setPriority(String priority) {
+        this.priority = priority;
+    }
+
+    public Timestamp getCancelDate() {
+        return cancelDate;
+    }
+
+    public void setCancelDate(Timestamp cancelDate) {
+        this.cancelDate = cancelDate;
+    }
+
+    public String getCancelReason() {
+        return cancelReason;
+    }
+
+    public void setCancelReason(String cancelReason) {
+        this.cancelReason = cancelReason;
+    }
+
+    public Boolean getManuallyEntered() {
+        return manuallyEntered;
+    }
+
+    public void setManuallyEntered(Boolean manuallyEntered) {
+        this.manuallyEntered = manuallyEntered;
+    }
+
+    public Boolean getReconciled() {
+        return reconciled;
+    }
+
+    public void setReconciled(Boolean reconciled) {
+        this.reconciled = reconciled;
+    }
+
+    public Timestamp getReconciledAt() {
+        return reconciledAt;
+    }
+
+    public void setReconciledAt(Timestamp reconciledAt) {
+        this.reconciledAt = reconciledAt;
+    }
+
+    public String getReconciledBy() {
+        return reconciledBy;
+    }
+
+    public void setReconciledBy(String reconciledBy) {
+        this.reconciledBy = reconciledBy;
+    }
+
+    public String getRejectReasonCode() {
+        return rejectReasonCode;
+    }
+
+    public void setRejectReasonCode(String rejectReasonCode) {
+        this.rejectReasonCode = rejectReasonCode;
+    }
+
+    public String getRejectReasonText() {
+        return rejectReasonText;
+    }
+
+    public void setRejectReasonText(String rejectReasonText) {
+        this.rejectReasonText = rejectReasonText;
+    }
+
+    public boolean isAssignedToBox() {
+        return getAssignedBox() != null;
+    }
+
+    public boolean isLost() {
+        return Boolean.TRUE.equals(lostStatus);
     }
 }

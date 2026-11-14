@@ -1,0 +1,175 @@
+package org.openelisglobal.shipment.dao;
+
+import java.sql.Timestamp;
+import java.util.List;
+import java.util.UUID;
+import org.hibernate.Session;
+import org.hibernate.query.Query;
+import org.openelisglobal.common.daoimpl.BaseDAOImpl;
+import org.openelisglobal.common.exception.LIMSRuntimeException;
+import org.openelisglobal.shipment.valueholder.BoxState;
+import org.openelisglobal.shipment.valueholder.ShippingBox;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
+
+@Component
+public class ShippingBoxDAOImpl extends BaseDAOImpl<ShippingBox, Integer> implements ShippingBoxDAO {
+
+    private static final Logger logger = LoggerFactory.getLogger(ShippingBoxDAOImpl.class);
+
+    public ShippingBoxDAOImpl() {
+        super(ShippingBox.class);
+    }
+
+    @Override
+    public List<ShippingBox> getAll() {
+        try {
+            String hql = "FROM ShippingBox b ORDER BY b.createdDate DESC";
+            Query<ShippingBox> query = entityManager.unwrap(Session.class).createQuery(hql, ShippingBox.class);
+            return query.list();
+        } catch (Exception e) {
+            logger.error("Error getting all ShippingBoxes", e);
+            throw new LIMSRuntimeException("Error getting all ShippingBoxes", e);
+        }
+    }
+
+    @Override
+    public ShippingBox findByBoxId(String boxId) {
+        try {
+            String hql = "FROM ShippingBox b WHERE b.boxId = :boxId";
+            Query<ShippingBox> query = entityManager.unwrap(Session.class).createQuery(hql, ShippingBox.class);
+            query.setParameter("boxId", boxId);
+            query.setMaxResults(1);
+            List<ShippingBox> results = query.list();
+            return results.isEmpty() ? null : results.get(0);
+        } catch (Exception e) {
+            logger.error("Error finding ShippingBox by boxId", e);
+            throw new LIMSRuntimeException("Error finding ShippingBox by boxId", e);
+        }
+    }
+
+    @Override
+    public ShippingBox findByFhirUuid(UUID fhirUuid) {
+        try {
+            String hql = "FROM ShippingBox b WHERE b.fhirUuid = :fhirUuid";
+            Query<ShippingBox> query = entityManager.unwrap(Session.class).createQuery(hql, ShippingBox.class);
+            query.setParameter("fhirUuid", fhirUuid);
+            query.setMaxResults(1);
+            List<ShippingBox> results = query.list();
+            return results.isEmpty() ? null : results.get(0);
+        } catch (Exception e) {
+            logger.error("Error finding ShippingBox by fhirUuid", e);
+            throw new LIMSRuntimeException("Error finding ShippingBox by fhirUuid", e);
+        }
+    }
+
+    @Override
+    public List<ShippingBox> findByEqaCycleId(Long eqaCycleId) {
+        try {
+            // LEFT JOIN FETCH: the caller reads courier details off every box, and the
+            // shipment side is lazy, so fetching it here is what keeps this one query.
+            String hql = "FROM ShippingBox b LEFT JOIN FETCH b.shipment WHERE b.eqaCycleId = :eqaCycleId"
+                    + " ORDER BY b.id";
+            Query<ShippingBox> query = entityManager.unwrap(Session.class).createQuery(hql, ShippingBox.class);
+            query.setParameter("eqaCycleId", eqaCycleId);
+            return query.list();
+        } catch (Exception e) {
+            logger.error("Error finding ShippingBoxes by eqaCycleId", e);
+            throw new LIMSRuntimeException("Error finding ShippingBoxes by eqaCycleId", e);
+        }
+    }
+
+    @Override
+    public List<ShippingBox> findByState(BoxState state) {
+        try {
+            String hql = "FROM ShippingBox b WHERE b.state = :state AND b.inbound = false ORDER BY b.createdDate DESC";
+            Query<ShippingBox> query = entityManager.unwrap(Session.class).createQuery(hql, ShippingBox.class);
+            query.setParameter("state", state);
+            return query.list();
+        } catch (Exception e) {
+            logger.error("Error finding ShippingBoxes by state", e);
+            throw new LIMSRuntimeException("Error finding ShippingBoxes by state", e);
+        }
+    }
+
+    @Override
+    public List<ShippingBox> findByDestinationFacilityId(Integer facilityId) {
+        try {
+            String hql = "FROM ShippingBox b WHERE b.destinationFacility.id = :facilityId AND b.inbound = false ORDER BY b.createdDate DESC";
+            Query<ShippingBox> query = entityManager.unwrap(Session.class).createQuery(hql, ShippingBox.class);
+            // Organization.id is a String; bind as String to avoid a type-mismatch error
+            query.setParameter("facilityId", String.valueOf(facilityId));
+            return query.list();
+        } catch (Exception e) {
+            logger.error("Error finding ShippingBoxes by destination facility", e);
+            throw new LIMSRuntimeException("Error finding ShippingBoxes by destination facility", e);
+        }
+    }
+
+    @Override
+    public List<ShippingBox> findByCreatedDateRange(Timestamp startDate, Timestamp endDate) {
+        try {
+            String hql = "FROM ShippingBox b WHERE b.createdDate BETWEEN :startDate AND :endDate ORDER BY b.createdDate DESC";
+            Query<ShippingBox> query = entityManager.unwrap(Session.class).createQuery(hql, ShippingBox.class);
+            query.setParameter("startDate", startDate);
+            query.setParameter("endDate", endDate);
+            return query.list();
+        } catch (Exception e) {
+            logger.error("Error finding ShippingBoxes by created date range", e);
+            throw new LIMSRuntimeException("Error finding ShippingBoxes by created date range", e);
+        }
+    }
+
+    @Override
+    public List<ShippingBox> findAllActive() {
+        try {
+            String hql = "FROM ShippingBox b WHERE b.archived = false ORDER BY b.createdDate DESC";
+            Query<ShippingBox> query = entityManager.unwrap(Session.class).createQuery(hql, ShippingBox.class);
+            return query.list();
+        } catch (Exception e) {
+            logger.error("Error finding active ShippingBoxes", e);
+            throw new LIMSRuntimeException("Error finding active ShippingBoxes", e);
+        }
+    }
+
+    @Override
+    public List<ShippingBox> findActiveByInbound(boolean inbound) {
+        try {
+            String hql = "FROM ShippingBox b WHERE b.archived = false AND b.inbound = :inbound ORDER BY b.createdDate DESC";
+            Query<ShippingBox> query = entityManager.unwrap(Session.class).createQuery(hql, ShippingBox.class);
+            query.setParameter("inbound", inbound);
+            return query.list();
+        } catch (Exception e) {
+            logger.error("Error finding ShippingBoxes by inbound flag", e);
+            throw new LIMSRuntimeException("Error finding ShippingBoxes by inbound flag", e);
+        }
+    }
+
+    @Override
+    public int countByState(BoxState state) {
+        try {
+            String hql = "SELECT COUNT(*) FROM ShippingBox b WHERE b.state = :state";
+            Query<Long> query = entityManager.unwrap(Session.class).createQuery(hql, Long.class);
+            query.setParameter("state", state);
+            Long count = query.uniqueResult();
+            return count != null ? count.intValue() : 0;
+        } catch (Exception e) {
+            logger.error("Error counting ShippingBoxes by state", e);
+            throw new LIMSRuntimeException("Error counting ShippingBoxes by state", e);
+        }
+    }
+
+    @Override
+    public void adjustSampleCount(Integer shippingBoxId, int delta) {
+        try {
+            String hql = "UPDATE ShippingBox b SET b.actualSampleCount = COALESCE(b.actualSampleCount, 0) + :delta"
+                    + " WHERE b.id = :id";
+            entityManager.unwrap(Session.class).createQuery(hql).setParameter("delta", delta)
+                    .setParameter("id", shippingBoxId).executeUpdate();
+        } catch (Exception e) {
+            logger.error("Error adjusting ShippingBox sample count", e);
+            throw new LIMSRuntimeException("Error adjusting ShippingBox sample count", e);
+        }
+    }
+}

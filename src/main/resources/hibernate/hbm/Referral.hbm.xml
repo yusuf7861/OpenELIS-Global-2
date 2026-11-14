@@ -51,5 +51,47 @@
         </many-to-one>
         <property name="fhirUuid" column="fhir_uuid"
             type="java.util.UUID" />
+
+        <!-- Shipment tracking fields -->
+        <many-to-one name="assignedBox"
+            class="org.openelisglobal.shipment.valueholder.ShippingBox"
+            fetch="select" lazy="false">
+            <column name="assigned_to_box_id" not-null="false" />
+        </many-to-one>
+        <property name="lostStatus" type="java.lang.Boolean"
+            column="lost_status" not-null="false" />
+        <property name="lostDate" type="java.sql.Timestamp"
+            column="lost_date" length="7" not-null="false" />
+        <property name="lostReason" column="lost_reason"
+            type="java.lang.String" not-null="false" />
+        <property name="priority" column="priority" length="20"
+            not-null="false" />
+        <property name="cancelDate" type="java.sql.Timestamp"
+            column="cancel_date" length="7" not-null="false" />
+        <property name="cancelReason" column="cancel_reason"
+            type="java.lang.String" not-null="false" />
+        <property name="manuallyEntered" type="java.lang.Boolean"
+            column="manually_entered" not-null="false" />
+
+        <!-- OGC-803/804 reception actions -->
+        <property name="reconciled" type="java.lang.Boolean"
+            column="reconciled" not-null="false" />
+        <property name="reconciledAt" type="java.sql.Timestamp"
+            column="reconciled_at" length="7" not-null="false" />
+        <property name="reconciledBy"
+            type="org.openelisglobal.hibernate.resources.usertype.LIMSStringNumberUserType"
+            column="reconciled_by" precision="10" scale="0" not-null="false" />
+        <property name="rejectReasonCode" column="reject_reason_code"
+            type="java.lang.String" length="64" not-null="false" />
+        <property name="rejectReasonText" column="reject_reason_text"
+            type="java.lang.String" not-null="false" />
+
+        <!-- S-14 / OGC-624 inter-lab transfer subcontract metadata -->
+        <many-to-one name="subcontract"
+            class="org.openelisglobal.referral.valueholder.ReferralSubcontract"
+            fetch="select" lazy="false" cascade="all">
+            <column name="subcontract_id" precision="10" scale="0"
+                not-null="false" />
+        </many-to-one>
     </class>
 </hibernate-mapping>

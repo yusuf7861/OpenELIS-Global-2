@@ -55,7 +55,7 @@ public interface ResultDAO extends BaseDAO<Result, String> {
 
     List<Result> getReportableResultsByAnalysis(Analysis analysis) throws LIMSRuntimeException;
 
-    Result getResultForAnalyteInAnalysisSet(String analyteId, List<Integer> analysisIDList) throws LIMSRuntimeException;
+    Result getResultForAnalyteInAnalysisSet(String analyteId, List<String> analysisIDList) throws LIMSRuntimeException;
 
     Result getResultForAnalyteAndSampleItem(String analyteId, String sampleItemId) throws LIMSRuntimeException;
 
@@ -63,7 +63,7 @@ public interface ResultDAO extends BaseDAO<Result, String> {
 
     // public void deleteData(Result result) throws LIMSRuntimeException;
 
-    List<Result> getResultsForAnalysisIdList(List<Integer> analysisIdList) throws LIMSRuntimeException;
+    List<Result> getResultsForAnalysisIdList(List<String> analysisIdList) throws LIMSRuntimeException;
 
     List<Result> getResultsForTestAndSample(String sampleId, String testId);
 
@@ -81,4 +81,10 @@ public interface ResultDAO extends BaseDAO<Result, String> {
             throws LIMSRuntimeException;
 
     List<Result> getResultsByPatientUuid(String patientUuid) throws LIMSRuntimeException;
+
+    /**
+     * The value stored for the result, read without flushing the changes the caller
+     * is about to save; null when the row does not exist.
+     */
+    String getStoredValue(String resultId);
 }

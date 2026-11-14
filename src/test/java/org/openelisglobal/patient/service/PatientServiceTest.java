@@ -49,6 +49,7 @@ public class PatientServiceTest extends BaseWebContextSensitiveTest {
     @Before
     public void init() throws Exception {
         executeDataSetWithStateManagement("testdata/patient.xml");
+        ensureReferenceTables("PATIENT", "PERSON", "PATIENT_IDENTITY");
     }
 
     @Test
@@ -302,6 +303,7 @@ public class PatientServiceTest extends BaseWebContextSensitiveTest {
         UUID generatedUUID = UUID.randomUUID();
         Patient patient = patientService.get("1");
         patient.setFhirUuid(generatedUUID);
+        patient.setSysUserId("1");
         patientService.update(patient);
 
         Assert.assertEquals(4, patientService.getAll().size());
@@ -338,6 +340,7 @@ public class PatientServiceTest extends BaseWebContextSensitiveTest {
         Person person = new Person();
         person.setFirstName(firstName);
         person.setLastName(LastName);
+        person.setSysUserId("1");
         personService.save(person);
 
         DateFormat dateFormat = new SimpleDateFormat("dd/MM/yyyy");
@@ -349,6 +352,7 @@ public class PatientServiceTest extends BaseWebContextSensitiveTest {
         pat.setPerson(person);
         pat.setBirthDate(dob);
         pat.setGender(gender);
+        pat.setSysUserId("1");
 
         return pat;
     }
@@ -358,6 +362,8 @@ public class PatientServiceTest extends BaseWebContextSensitiveTest {
         Patient savedPatient = patientService.get("2");
         savedPatient.getPerson().setFirstName("Alicia");
         savedPatient.setGender("M");
+        savedPatient.getPerson().setSysUserId("1");
+        savedPatient.setSysUserId("1");
 
         personService.save(savedPatient.getPerson());
 
@@ -374,6 +380,7 @@ public class PatientServiceTest extends BaseWebContextSensitiveTest {
 
         Patient savedPatient = patientService.get("4");
         Assert.assertNotNull(savedPatient);
+        savedPatient.setSysUserId("1");
 
         patientService.delete(savedPatient);
 

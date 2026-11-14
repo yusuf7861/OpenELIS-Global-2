@@ -12,6 +12,7 @@ import org.openelisglobal.coldstorage.service.FreezerService;
 import org.openelisglobal.coldstorage.valueholder.Freezer;
 import org.openelisglobal.common.constants.Constants;
 import org.openelisglobal.common.rest.BaseRestController;
+import org.openelisglobal.common.services.IStatusService;
 import org.openelisglobal.login.dao.UserModuleService;
 import org.openelisglobal.storage.dao.*;
 import org.openelisglobal.storage.form.*;
@@ -22,7 +23,9 @@ import org.openelisglobal.storage.form.response.StorageRoomResponse;
 import org.openelisglobal.storage.form.response.StorageShelfResponse;
 import org.openelisglobal.storage.service.DeletionValidationResult;
 import org.openelisglobal.storage.service.StorageDashboardService;
+import org.openelisglobal.storage.service.StorageDeviceService;
 import org.openelisglobal.storage.service.StorageLocationService;
+import org.openelisglobal.storage.service.StorageRoomService;
 import org.openelisglobal.storage.service.StorageSearchService;
 import org.openelisglobal.storage.valueholder.*;
 import org.openelisglobal.userrole.service.UserRoleService;
@@ -53,10 +56,13 @@ public class StorageLocationRestController extends BaseRestController {
     private StorageSearchService storageSearchService;
 
     @Autowired
-    private StorageRoomDAO storageRoomDAO;
+    private IStatusService statusService;
 
     @Autowired
-    private StorageDeviceDAO storageDeviceDAO;
+    private StorageRoomService storageRoomService;
+
+    @Autowired
+    private StorageDeviceService storageDeviceService;
 
     @Autowired
     private SampleStorageAssignmentDAO sampleStorageAssignmentDAO;
@@ -95,7 +101,7 @@ public class StorageLocationRestController extends BaseRestController {
     // ========== Room Endpoints ==========
 
     @PostMapping("/rooms")
-    public ResponseEntity<?> createRoom(@Valid @RequestBody StorageRoomForm form) {
+    public ResponseEntity<?> createRoom(@Valid @RequestBody StorageRoomForm form, HttpServletRequest request) {
         try {
             if (!storageLocationService.isNameUniqueWithinParent(form.getName(), null, "room", null)) {
                 Map<String, Object> error = new HashMap<>();
@@ -114,8 +120,7 @@ public class StorageLocationRestController extends BaseRestController {
             room.setDescription(form.getDescription());
             room.setActive(form.getActive() != null ? form.getActive() : true);
             room.setFhirUuid(UUID.randomUUID());
-            room.setSysUserId("1"); // Default system user for REST API (should come from security context in
-                                    // production)
+            room.setSysUserId(getSysUserId());
 
             StorageRoom createdRoom = storageLocationService.createRoom(room);
 
@@ -318,9 +323,17 @@ public class StorageLocationRestController extends BaseRestController {
 
     // ========== Device Endpoints ==========
 
+    @GetMapping("/devices/types")
+    public ResponseEntity<List<String>> getDeviceTypes() {
+        List<String> types = new ArrayList<>();
+        for (StorageDevice.DeviceType type : StorageDevice.DeviceType.values()) {
+            types.add(type.getValue());
+        }
+        return ResponseEntity.ok(types);
+    }
+
     @PostMapping("/devices")
-    public ResponseEntity<?> createDevice(@Valid @RequestBody StorageDeviceForm form,
-            jakarta.servlet.http.HttpServletRequest request) {
+    public ResponseEntity<?> createDevice(@Valid @RequestBody StorageDeviceForm form, HttpServletRequest request) {
         try {
             // Set parent room first (needed for code generation)
             Integer parentRoomId = form.getParentRoomId() != null ? Integer.parseInt(form.getParentRoomId()) : null;
@@ -353,7 +366,7 @@ public class StorageLocationRestController extends BaseRestController {
             device.setPort(form.getPort());
             device.setCommunicationProtocol(form.getCommunicationProtocol());
             device.setFhirUuid(UUID.randomUUID());
-            device.setSysUserId("1"); // Default system user for REST API
+            device.setSysUserId(getSysUserId());
             device.setParentRoom(parentRoom);
 
             Integer id = storageLocationService.insert(device);
@@ -361,11 +374,7 @@ public class StorageLocationRestController extends BaseRestController {
 
             if (shouldEnableMonitoring(device)) {
                 try {
-                    String sysUserId = getSysUserId(request);
-                    if (sysUserId == null) {
-                        sysUserId = "1"; // Default system user for tests/REST API without session
-                    }
-                    createFreezerMonitoringStub(device, sysUserId);
+                    createFreezerMonitoringStub(device, getSysUserId());
                 } catch (Exception e) {
                     logger.warn("Failed to auto-create freezer monitoring stub for device {}: {}", device.getName(),
                             e.getMessage());
@@ -630,14 +639,14 @@ public class StorageLocationRestController extends BaseRestController {
     // ========== Shelf Endpoints ==========
 
     @PostMapping("/shelves")
-    public ResponseEntity<?> createShelf(@Valid @RequestBody StorageShelfForm form) {
+    public ResponseEntity<?> createShelf(@Valid @RequestBody StorageShelfForm form, HttpServletRequest request) {
         try {
             StorageShelf shelf = new StorageShelf();
             shelf.setLabel(form.getLabel());
             shelf.setCapacityLimit(form.getCapacityLimit());
             shelf.setActive(form.getActive() != null ? form.getActive() : true);
             shelf.setFhirUuid(UUID.randomUUID());
-            shelf.setSysUserId("1"); // Default system user for REST API
+            shelf.setSysUserId(getSysUserId());
 
             Integer parentDeviceId = form.getParentDeviceId() != null ? Integer.parseInt(form.getParentDeviceId())
                     : null;
@@ -893,14 +902,14 @@ public class StorageLocationRestController extends BaseRestController {
     // ========== Rack Endpoints ==========
 
     @PostMapping("/racks")
-    public ResponseEntity<?> createRack(@Valid @RequestBody StorageRackForm form) {
+    public ResponseEntity<?> createRack(@Valid @RequestBody StorageRackForm form, HttpServletRequest request) {
         try {
             StorageRack rack = new StorageRack();
             rack.setLabel(form.getLabel());
             rack.setCode(form.getCode());
             rack.setActive(form.getActive() != null ? form.getActive() : true);
             rack.setFhirUuid(UUID.randomUUID());
-            rack.setSysUserId("1"); // Default system user for REST API
+            rack.setSysUserId(getSysUserId());
 
             Integer parentShelfId = form.getParentShelfId() != null ? Integer.parseInt(form.getParentShelfId()) : null;
             StorageShelf parentShelf = (StorageShelf) storageLocationService.get(parentShelfId, StorageShelf.class);
@@ -1159,8 +1168,23 @@ public class StorageLocationRestController extends BaseRestController {
 
     // ========== Box Endpoints ==========
 
+    @GetMapping("/boxes/{id}")
+    public ResponseEntity<StorageBoxResponse> getBoxById(@PathVariable String id) {
+        try {
+            Integer idInt = Integer.parseInt(id);
+            StorageBox box = (StorageBox) storageLocationService.get(idInt, StorageBox.class);
+            if (box == null) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+            }
+            return ResponseEntity.ok(toBoxResponse(box));
+        } catch (Exception e) {
+            logger.error("Error getting box by id", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
     @PostMapping("/boxes")
-    public ResponseEntity<?> createBox(@Valid @RequestBody StorageBoxForm form) {
+    public ResponseEntity<?> createBox(@Valid @RequestBody StorageBoxForm form, HttpServletRequest request) {
         try {
             StorageBox box = new StorageBox();
             box.setLabel(form.getLabel());
@@ -1171,7 +1195,7 @@ public class StorageLocationRestController extends BaseRestController {
             box.setCode(form.getCode());
             box.setActive(form.getActive() != null ? form.getActive() : true);
             box.setFhirUuid(UUID.randomUUID());
-            box.setSysUserId("1"); // Default system user for REST API
+            box.setSysUserId(getSysUserId());
 
             Integer parentRackId = form.getParentRackId() != null ? Integer.parseInt(form.getParentRackId()) : null;
             StorageRack parentRack = (StorageRack) storageLocationService.get(parentRackId, StorageRack.class);
@@ -1374,7 +1398,7 @@ public class StorageLocationRestController extends BaseRestController {
         int suffix = 1;
 
         // Check for uniqueness and append suffix if needed
-        while (storageRoomDAO.findByCode(code) != null) {
+        while (storageRoomService.findByCode(code) != null) {
             String suffixStr = String.valueOf(suffix);
             int maxBaseLength = 50 - suffixStr.length() - 1; // -1 for hyphen
             if (maxBaseLength < 1) {
@@ -1415,7 +1439,7 @@ public class StorageLocationRestController extends BaseRestController {
         int suffix = 1;
 
         // Check for uniqueness within the room and append suffix if needed
-        while (storageDeviceDAO.findByParentRoomIdAndCode(roomId, code) != null) {
+        while (storageDeviceService.findByParentRoomIdAndCode(roomId, code) != null) {
             String suffixStr = String.valueOf(suffix);
             int maxBaseLength = 50 - suffixStr.length() - 1; // -1 for hyphen
             if (maxBaseLength < 1) {
@@ -1609,7 +1633,7 @@ public class StorageLocationRestController extends BaseRestController {
         response.setActive(box.getActive());
 
         Map<String, Map<String, String>> occupiedCoordinatesMap = sampleStorageAssignmentDAO
-                .getOccupiedCoordinatesWithSampleInfo(box.getId());
+                .getOccupiedCoordinatesWithOccupantInfo(box.getId());
         response.setOccupied(!occupiedCoordinatesMap.isEmpty());
         response.setOccupiedCoordinates(occupiedCoordinatesMap);
         response.setFhirUuid(box.getFhirUuidAsString());
@@ -1699,6 +1723,9 @@ public class StorageLocationRestController extends BaseRestController {
     public ResponseEntity<List<Map<String, Object>>> searchSampleItems(@RequestParam(required = false) String q) {
         try {
             List<Map<String, Object>> results = storageSearchService.searchSamples(q);
+            // Same translation the listing applies: without it a disposed hit
+            // carries its raw status id and the client draws an Active tag.
+            results.forEach(result -> SampleStatusResponse.normalize(result, statusService));
             return ResponseEntity.ok(results);
         } catch (Exception e) {
             logger.error("Error searching sample items with query: " + q, e);
@@ -1778,15 +1805,22 @@ public class StorageLocationRestController extends BaseRestController {
         }
     }
 
-    // ========== Dashboard Endpoints ==========
+    @GetMapping("/boxes/search")
+    public ResponseEntity<List<Map<String, Object>>> searchBoxes(@RequestParam(required = false) String q) {
+        try {
+            List<Map<String, Object>> response = storageSearchService.searchBoxes(q);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            logger.error("Error searching boxes", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
 
     /**
-     * Get location counts by type for active locations only (FR-057, FR-057a). GET
-     * /rest/storage/dashboard/location-counts Returns counts for Room, Device,
-     * Shelf, and Rack levels (Position excluded). Only counts active
-     * (non-decommissioned) locations.
+     * Count the active locations of each type (FR-057, FR-057a); inactive ones are
+     * not counted.
      * 
-     * @return JSON map with keys: "rooms", "devices", "shelves", "racks" and
+     * @return JSON map with keys: "rooms", "devices", "shelves", "racks", "boxes"
      *         integer count values
      */
     @GetMapping("/dashboard/location-counts")
@@ -1802,6 +1836,7 @@ public class StorageLocationRestController extends BaseRestController {
             emptyCounts.put("devices", 0);
             emptyCounts.put("shelves", 0);
             emptyCounts.put("racks", 0);
+            emptyCounts.put("boxes", 0);
             return ResponseEntity.ok(emptyCounts);
         }
     }

@@ -215,9 +215,11 @@ GOOD:
 ### VII. Internationalization first (frontend)
 
 - No hardcoded user-facing strings. Use React Intl and add message IDs to
-  `frontend/src/languages/{locale}.json`.
-- Minimum expectation for new UI text: provide at least **en + fr** (per project
-  guidance).
+  `frontend/src/languages/en.json` ONLY.
+- Do NOT edit non-English locale files (`fr.json`, `es.json`, etc.) —
+  translations are managed on
+  [Transifex](https://explore.transifex.com/openmrs/openelis-1/) and pulled
+  automatically. A CI check blocks PRs that modify non-English locale files.
 
 **Examples**
 
@@ -248,7 +250,8 @@ GOOD:
 
 When reviewing, explicitly look for unintended impacts on:
 
-- **Analyzer flows**: mappings, reprocessing, plugins, instrument integrations.
+- **Analyzer flows**: Bridge profiles and connections, local catalog mappings,
+  result review, and operational quality control.
 - **Result entry/validation/reporting**: workflow-critical paths.
 - **Security**: auth, session handling, permission checks, config changes.
 - **Database compatibility**: migrations, constraints, nullable/unique changes,
@@ -297,7 +300,8 @@ Flag changes that:
 ### Frontend (React 17 + Carbon + React Intl)
 
 - For new components/logic, ensure tests exist where appropriate (Jest/RTL).
-- Verify no hardcoded UI strings; message IDs added to language JSON files.
+- Verify no hardcoded UI strings; message IDs added to `en.json` only (Transifex
+  handles other locales).
 
 ### Cypress E2E (full chain, real backend + DB)
 
@@ -308,12 +312,12 @@ Flag changes that:
   - Use Cypress retry-ability (`should`) rather than sleeps.
 - Use repository-provided npm scripts for Cypress execution (don’t recommend
   direct `npx cypress`).
-- **Pre-push E2E validation is mandatory** when E2E-relevant behavior changes:
-  - Prefer the CI-replication script: `./scripts/run-e2e-like-ci.sh`
-  - Prefer fail-fast when iterating:
-    `E2E_FAIL_FAST=true ./scripts/run-e2e-like-ci.sh`
-  - Or use npm scripts in `frontend/package.json` (examples:
-    `npm run cy:spec ...`, `npm run cy:failfast`)
+- Start interactive development through `scripts/dev-stack up`, export
+  `scripts/dev-stack env`, then use the native npm/Playwright/Cypress commands.
+- For isolated validation, use `scripts/run-ci-checks.sh`; `--job NAME` selects
+  a CI job and includes its setup. `--list-jobs` lists supported names.
+- Run the complete command after each push alongside GitHub. A targeted pass is
+  partial evidence. See [the development guide](../docs/dev_setup.md).
 
 ### Build/format expectations (call out if missing)
 
